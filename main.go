@@ -8,17 +8,19 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/yobert/pglogfmt/util"
 )
 
 var (
-	durationRe = regexp.MustCompile(`\s*duration:\s+[\d\.]+\s+\w+\s+`)
-	executeRe  = regexp.MustCompile(`\s*execute\s+[\w\<\>]+:\s+`)
-	identRe    = regexp.MustCompile(`"[^"]*"`)
-	paramRe    = regexp.MustCompile(`\$\d+`)
-	paramSet   = regexp.MustCompile(`(\$\d+)\s*=\s*('[^']*')`)
+	durationRe  = regexp.MustCompile(`\s*duration:\s+[\d\.]+\s+\w+\s+`)
+	executeRe   = regexp.MustCompile(`\s*execute\s+[\w\<\>]+:\s+`)
+	statementRe = regexp.MustCompile(`\s*statement:\s+`)
+	identRe     = regexp.MustCompile(`"[^"]*"`)
+	paramRe     = regexp.MustCompile(`\$\d+`)
+	paramSet    = regexp.MustCompile(`(\$\d+)\s*=\s*(NULL|'[^']*')`)
 
 	simpleMessages = map[string]bool{
 		"BEGIN":    true,
@@ -53,6 +55,8 @@ func main() {
 		txt := row[13]
 		params := row[14]
 
+		//fmt.Println(op, txt, params)
+
 		if !simpleMessages[op] && !parseMessages[op] {
 			continue
 		}
@@ -71,8 +75,10 @@ func main() {
 			}
 			c.Log(ctx, 0, "", data)
 		} else if parseMessages[op] {
+			//fmt.Println("txt", txt, "params", params)
 			txt = durationRe.ReplaceAllString(txt, "")
 			txt = executeRe.ReplaceAllString(txt, "")
+			txt = statementRe.ReplaceAllString(txt, "")
 			txt = identRe.ReplaceAllStringFunc(txt, func(v string) string {
 				v = v[1 : len(v)-1]
 				return v
@@ -99,7 +105,12 @@ func main() {
 					args = newargs
 					data["args"] = args
 				}
-				args[di] = v[1 : len(v)-1]
+				if strings.ToLower(v) == "null" {
+					var nullstring *string
+					args[di] = nullstring
+				} else {
+					args[di] = v[1 : len(v)-1]
+				}
 			}
 
 			c.Log(ctx, 0, "", data)
